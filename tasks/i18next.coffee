@@ -20,65 +20,47 @@ module.exports = (grunt) ->
 
   grunt.registerMultiTask 'i18next', 'Build locale files.', ->
     options = @options
-      srcFolder : 'app/locales'
-      destFile  : 'build/locales.json'
+      src: ''
+      dest: ''
+      inputExt: 'json'  # @TODO, plan to support js/json
+      outputExt: 'js'   # @TODO, plan to support js/json
 
-    jsonConcat = ( keyArr, destObj, srcObj ) ->
-      lang = keyArr[ 0 ]
-      namespace = keyArr[ 1 ]
-
-      if ( !destObj.hasOwnProperty lang )
-        destObj[ lang ] = {}
-
-      destObj[ lang ][ namespace ] = srcObj
+    inputFileExtAndExistRegex = new RegExp "\\w+.#{options.inputExt}$"
+    inputFileExtRegex = new RegExp ".#{options.inputExt}$"
+    destFilePath = "#{options.dest}.#{options.outputExt}"
+    destFileStr = ''
+    destFileObj = {}
 
     iterateLocales = ( absPath, rootDir, subDir, fileName ) ->
-      destFilePath = options.destFile
+      # Only inputExt file will be process
+      return if not inputFileExtAndExistRegex.test fileName
 
-      # Only json file will be process
-      if( !/\w+.json$/.test fileName )
-        return
+      folderLayer = ( subDir.split '/' ).length
 
-      # If dest file doesn't exist, then just copy it.
-      if ( !grunt.file.exists destFilePath )
-        grunt.file.write destFilePath, JSON.stringify {}
+      # @TODO Only support 2 layer now lang/namspace
+      grunt.fail.fatal "can't deeper than 2 layer now" if folderLayer > 1
 
       # Read source file, read dest file. merge them. write it in dest file
-      lang = ( subDir.split '/' )[ 0 ]
-      namespace = fileName.replace /.json$/, ''
-      srcFile = grunt.file.readJSON absPath
-      destFile = grunt.file.readJSON destFilePath
-      mergedFile = jsonConcat [ lang, namespace ], destFile, srcFile
+      lang = subDir
+      namespace = fileName.replace inputFileExtRegex, ''
 
-      console.log( destFile )
-      console.log( mergedFile )
-      console.log( '====' );
+      destFileObj[ lang ] = {} if not destFileObj[ lang ]
+      destFileObj[ lang ][ namespace ] = JSON.parse grunt.file.read absPath
 
-      grunt.file.write( destFilePath, JSON.stringify( mergedFile ))
+    # If src folder not exist or not a folder, throw error.
+    if not grunt.file.isDir options.src
+      grunt.fail.fatal "options 'src' must be a folder."
 
+    # Delete old file and create an empty file
+    grunt.file.delete destFilePath
 
+    # Append js file
+    grunt.file.recurse options.src, iterateLocales
 
+    destFileStr += 'define( function( require, exports, module ){\nmodule.exports='
+    destFileStr += JSON.stringify destFileObj
+    destFileStr += '\n});'
 
+    grunt.file.write destFilePath, destFileStr
 
-
-        # var data = this.data;
-        # grunt.util.async.forEachSeries(this.files, function (f, nextFileObj) {
-        #     var destFile = f.dest;
-        #     var files = f.src.filter(function (filepath) {
-        #         // Warn on and remove invalid source files (if nonull was set).
-        #         if (!grunt.file.exists(filepath)) {
-        #             grunt.log.warn('Source file "' + filepath + '" not found.');
-        #             return false;
-        #         } else {
-        #             return true;
-        #         }
-        #     });
-
-        #     var json = concatJson(files, data);
-        #     grunt.file.write(destFile, json);
-        #     grunt.log.write('File "' + destFile + '" created.');
-        # });
-
-    # remove dir
-    console.log( @files );
-    # grunt.file.recurse options.srcFolder, iterateLocales
+    grunt.log.writeln "#{destFilePath.cyan} created."
